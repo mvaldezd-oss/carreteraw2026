@@ -110,15 +110,10 @@
 
     <!-- Botones para Cargar CSVs Personalizados -->
     <div class="flex items-center gap-2">
-      <label class="cursor-pointer px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
-        <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-        Cargar nodos
-        <input type="file" id="nodes-file-input" accept=".csv" class="hidden" onchange="handleFileSelect(event, 'nodes')">
-      </label>
-      <label class="cursor-pointer px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
-        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-        Cargar conexiones
-        <input type="file" id="links-file-input" accept=".csv" class="hidden" onchange="handleFileSelect(event, 'links')">
+      <label class="cursor-pointer px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-xs font-semibold text-indigo-200 rounded-lg border border-indigo-500/40 transition flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+        Cargar CSV adicional
+        <input type="file" id="custom-data-input" accept=".csv" multiple class="hidden" onchange="handleAdditionalDataUpload(event)">
       </label>
       <button onclick="exportCSVTemplates()" title="Descargar plantillas de ejemplo CSV" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-700 transition">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -168,6 +163,16 @@
               <input type="checkbox" id="layer-isolated" onchange="toggleLayer('isolated')" class="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0">
               <span>Mostrar Nodos Aislados (<span id="isolated-count">0</span>)</span>
             </label>
+          </div>
+        </div>
+
+        <!-- Ajustes de Fondo -->
+        <div class="pt-3 border-t border-slate-800">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Fondo</h2>
+          <div class="flex items-center gap-2">
+            <label for="background-color-picker" class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Color</label>
+            <input id="background-color-picker" type="color" value="#0b0f19" onchange="setBackgroundColor(this.value)" class="w-8 h-8 rounded border border-slate-600 bg-slate-900 cursor-pointer p-0" title="Cambiar color de fondo">
+            <button onclick="resetBackgroundColor()" class="px-2 py-1 text-[10px] font-semibold rounded bg-slate-700 hover:bg-slate-600 text-slate-200 transition">Reset</button>
           </div>
         </div>
 
@@ -263,8 +268,25 @@
       zoomBehavior: null,
       simulation: null,
       isolatedNodesCount: 0,
-      columnsFound: { nodes: [], links: [] }
+      columnsFound: { nodes: [], links: [] },
+      backgroundColor: '#0b0f19'
     };
+
+    function setBackgroundColor(color) {
+      const normalized = color || '#0b0f19';
+      state.backgroundColor = normalized;
+      document.body.style.backgroundColor = normalized;
+      const svg = document.getElementById('network-svg');
+      if (svg) svg.style.backgroundColor = normalized;
+      const main = document.querySelector('main');
+      if (main) main.style.backgroundColor = normalized;
+      const picker = document.getElementById('background-color-picker');
+      if (picker) picker.value = normalized;
+    }
+
+    function resetBackgroundColor() {
+      setBackgroundColor('#0b0f19');
+    }
 
     // ==========================================
     // DATASET POR DEFECTO: CAPITALES DE MÉXICO
@@ -1294,28 +1316,101 @@ Durango,Culiacán,230,Cuota,Ambos`;
     let tempNodesCSV = null;
     let tempLinksCSV = null;
 
+    function readTextFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          resolve(e.target.result);
+        };
+        reader.onerror = function() {
+          reject(new Error(`No se pudo leer el archivo: ${file.name}`));
+        };
+        reader.readAsText(file, "UTF-8");
+      });
+    }
+
     function handleFileSelect(event, fileType) {
       const file = event.target.files[0];
       if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const text = e.target.result;
-        const parsedRows = parseCustomCSV(text);
+      readTextFile(file)
+        .then((text) => {
+          const parsedRows = parseCustomCSV(text);
 
-        if (fileType === 'nodes') {
-          tempNodesCSV = parsedRows;
-        } else if (fileType === 'links') {
-          tempLinksCSV = parsedRows;
+          if (fileType === 'nodes') {
+            tempNodesCSV = parsedRows;
+          } else if (fileType === 'links') {
+            tempLinksCSV = parsedRows;
+          }
+
+          const nodesToUse = tempNodesCSV || parseCustomCSV(DEFAULT_MEXICO_NODES_CSV);
+          const linksToUse = tempLinksCSV || parseCustomCSV(DEFAULT_MEXICO_LINKS_CSV);
+          processGraphData(nodesToUse, linksToUse);
+        })
+        .catch((error) => {
+          console.error(error);
+          showNotice("No se pudo cargar el archivo CSV seleccionado.");
+        });
+    }
+
+    async function handleAdditionalDataUpload(event) {
+      const files = Array.from(event.target.files || []);
+      if (!files.length) return;
+
+      try {
+        const fileByType = {
+          nodes: files.find(file => /node|punto|capital|point/i.test(file.name)),
+          links: files.find(file => /link|conexion|ruta|edge/i.test(file.name))
+        };
+
+        if (fileByType.nodes) {
+          tempNodesCSV = parseCustomCSV(await readTextFile(fileByType.nodes));
+        }
+        if (fileByType.links) {
+          tempLinksCSV = parseCustomCSV(await readTextFile(fileByType.links));
         }
 
-        // Si ambos archivos han sido cargados o se reemplaza uno manteniendo el otro
         const nodesToUse = tempNodesCSV || parseCustomCSV(DEFAULT_MEXICO_NODES_CSV);
         const linksToUse = tempLinksCSV || parseCustomCSV(DEFAULT_MEXICO_LINKS_CSV);
-
         processGraphData(nodesToUse, linksToUse);
-      };
-      reader.readAsText(file, "UTF-8");
+      } catch (error) {
+        console.error(error);
+        showNotice("No se pudo cargar el CSV adicional. Verifica que sea un archivo válido.");
+      } finally {
+        event.target.value = "";
+      }
+    }
+
+    async function loadDefaultDataFromFolder() {
+      const defaultNodesPath = encodeURI('/data/Points.ingredientes (1).csv');
+      const defaultLinksPath = encodeURI('/data/Links.ingredientes (1).csv');
+
+      try {
+        const [nodesText, linksText] = await Promise.all([
+          fetch(defaultNodesPath).then(response => {
+            if (!response.ok) throw new Error('No se pudo cargar nodos');
+            return response.text();
+          }),
+          fetch(defaultLinksPath).then(response => {
+            if (!response.ok) throw new Error('No se pudo cargar enlaces');
+            return response.text();
+          })
+        ]);
+
+        const parsedNodes = parseCustomCSV(nodesText);
+        const parsedLinks = parseCustomCSV(linksText);
+
+        if (parsedNodes.length > 1 && parsedLinks.length > 1) {
+          processGraphData(parsedNodes, parsedLinks);
+          return;
+        }
+      } catch (error) {
+        console.warn('No se pudieron cargar los CSV de la carpeta data; se usarán los datos por defecto embebidos.', error);
+      }
+
+      const initialNodes = parseCustomCSV(DEFAULT_MEXICO_NODES_CSV);
+      const initialLinks = parseCustomCSV(DEFAULT_MEXICO_LINKS_CSV);
+      processGraphData(initialNodes, initialLinks);
     }
 
     // Generador de plantillas CSV para pruebas del usuario
@@ -1356,10 +1451,8 @@ Durango,Culiacán,230,Cuota,Ambos`;
     // 9 INICIO DE LA APLICACIÓN
     // ==========================================
     window.onload = function() {
-      // Cargar datos predeterminados de la Red Vial de México al iniciar
-      const initialNodes = parseCustomCSV(DEFAULT_MEXICO_NODES_CSV);
-      const initialLinks = parseCustomCSV(DEFAULT_MEXICO_LINKS_CSV);
-      processGraphData(initialNodes, initialLinks);
+      setBackgroundColor(state.backgroundColor);
+      loadDefaultDataFromFolder();
     };
   </script>
 </body>
